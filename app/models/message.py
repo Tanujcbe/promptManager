@@ -50,7 +50,12 @@ class Message(Base, ULIDMixin, TimestampMixin, SoftDeleteMixin, VersionMixin):
     
     # Message fields
     message_type: Mapped[MessageType] = mapped_column(
-        Enum(MessageType, name="message_type", create_constraint=True),
+        Enum(
+            MessageType,
+            name="message_type",
+            create_constraint=True,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     title: Mapped[str] = mapped_column(String(500), nullable=False)
