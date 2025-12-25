@@ -2,20 +2,47 @@
 JWT Security module for Supabase token validation.
 Provides FastAPI dependency for extracting authenticated user from JWT.
 """
-from datetime import datetime, timedelta, timezone
+import logging
+from datetime import datetime, timezone
 from typing import Annotated
 
+import jwt
+from jwt import PyJWKClient
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.session import get_db
 
+# Setup logger
+logger = logging.getLogger(__name__)
+
 # HTTP Bearer scheme for JWT tokens
 security = HTTPBearer()
+
+import ssl
+import certifi
+
+# Cache for JWKS client
+_jwks_client = None
+
+
+def get_jwks_client() -> PyJWKClient:
+    """
+    Get or create the PyJWKClient instance.
+    """
+    global _jwks_client
+    if _jwks_client is None:
+        settings = get_settings()
+        jwks_url = f"{settings.supabase_url}/auth/v1/.well-known/jwks.json"
+        
+        # Create SSL context with certifi's CA bundle
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        
+        _jwks_client = PyJWKClient(jwks_url, cache_keys=True, lifespan=3600, ssl_context=ssl_context)
+    return _jwks_client
 
 
 class AuthenticatedUser:
@@ -32,45 +59,46 @@ class AuthenticatedUser:
 def decode_supabase_jwt(token: str) -> dict:
     """
     Decode and validate a Supabase-issued JWT.
-    
-    Args:
-        token: The JWT access token from Authorization header
-        
-    Returns:
-        The decoded token payload
-        
-    Raises:
-        HTTPException: If token is invalid, expired, or malformed
+    Supports both HS256 (Secret) and ES256 (JWKS/Public Key).
     """
     settings = get_settings()
     
     try:
+        # Get header to check algorithm
+        header = jwt.get_unverified_header(token)
+        alg = header.get("alg")
+        
+        if alg == "HS256":
+            key = settings.supabase_jwt_secret
+            algorithms = ["HS256"]
+        elif alg == "ES256":
+             # Use PyJWKClient to fetch signing key
+            jwks_client = get_jwks_client()
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            key = signing_key.key
+            algorithms = ["ES256"]
+        else:
+             raise jwt.PyJWTError(f"Unsupported algorithm: {alg}")
+
         payload = jwt.decode(
             token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
+            key,
+            algorithms=algorithms,
             audience="authenticated",
+            leeway=60 # Add 60s leeway for clock skew
         )
-    except JWTError as e:
+    except jwt.InvalidTokenError as e:
+        logger.error(f"JWT decoding failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Check expiration
-    exp = payload.get("exp")
-    if exp is None:
-        raise HTTPException(
+    except Exception as e:
+         logger.error(f"Unexpected JWT error: {e}")
+         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has no expiration",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    if datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(tz=timezone.utc):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
+            detail="Token validation failed",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -96,10 +124,13 @@ async def get_current_user(
     Raises:
         HTTPException: If token is missing, invalid, or expired
     """
+    # Note: decode_supabase_jwt is synchronous now (PyJWKClient is sync by default used here)
+    # If async is strictly needed, we'd need a different approach, but PyJWKClient is efficient with caching.
     payload = decode_supabase_jwt(credentials.credentials)
     
     user_id = payload.get("sub")
     if not user_id:
+        logger.error("Token missing 'sub' claim (user_id)")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token missing user identifier",

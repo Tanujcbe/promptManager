@@ -114,3 +114,4 @@ yarn-error.log*
 .mypy_cache/
 .pyright/
 ruff_cache/
+promptManager.json
