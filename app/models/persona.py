@@ -39,7 +39,7 @@ class Persona(Base, ULIDMixin, TimestampMixin, SoftDeleteMixin, VersionMixin):
     # Persona fields
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    persona_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    persona_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="personas")

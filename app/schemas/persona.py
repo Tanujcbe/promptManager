@@ -11,7 +11,7 @@ class PersonaBase(BaseModel):
     
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = Field(None, max_length=5000)
-    persona_prompt: str = Field(..., min_length=1)
+    persona_prompt: str | None = Field(None, min_length=1)
 
 
 class PersonaCreate(PersonaBase):

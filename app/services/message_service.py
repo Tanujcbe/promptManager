@@ -10,6 +10,8 @@ from app.db.base import utc_now
 from app.models.message import Message, MessageType as ModelMessageType
 from app.models.persona import Persona
 from app.schemas.message import MessageCreate, MessageType, MessageUpdate
+from app.schemas.persona import PersonaCreate
+from app.services.persona_service import create_persona
 
 
 async def create_message(
@@ -22,9 +24,11 @@ async def create_message(
     New messages are always version -1 (Latest).
     """
     # Validate persona if provided
-    if data.persona_id is not None:
+    persona_id = data.persona_id or user_id
+    print(persona_id)
+    if persona_id is not None:
         stmt = select(Persona).where(
-            Persona.id == data.persona_id,
+            Persona.id == persona_id,
             Persona.user_id == user_id,
             Persona.deleted_at.is_(None),
         )
@@ -32,14 +36,12 @@ async def create_message(
         persona = result.scalar_one_or_none()
         
         if persona is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid persona_id: persona not found or not owned by user",
-            )
+            new_persona_data = PersonaCreate(name="Default Persona", description="Default Persona", persona_prompt=None)
+            new_persona = await create_persona(db, user_id, new_persona_data)
+            persona_id = new_persona.id
     
     # Convert schema enum to model enum
     model_message_type = ModelMessageType(data.message_type.value)
-    persona_id = data.persona_id or user_id
     message = Message(
         user_id=user_id,
         persona_id=persona_id,
