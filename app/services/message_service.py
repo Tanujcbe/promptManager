@@ -3,7 +3,7 @@ Message service - business logic for message CRUD operations.
 All operations enforce user-scoped access control.
 """
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utc_now
@@ -19,17 +19,7 @@ async def create_message(
 ) -> Message:
     """
     Create a new message for the user.
-    
-    Args:
-        db: Database session
-        user_id: Authenticated user's ID
-        data: Message creation data
-        
-    Returns:
-        Created message
-        
-    Raises:
-        HTTPException: 400 if persona_id is invalid or not owned by user
+    New messages are always version -1 (Latest).
     """
     # Validate persona if provided
     if data.persona_id is not None:
@@ -49,15 +39,16 @@ async def create_message(
     
     # Convert schema enum to model enum
     model_message_type = ModelMessageType(data.message_type.value)
-    
+    persona_id = data.persona_id or user_id
     message = Message(
         user_id=user_id,
-        persona_id=data.persona_id,
+        persona_id=persona_id,
         message_type=model_message_type,
         title=data.title,
         content=data.content,
         summary=data.summary,
         starred=data.starred,
+        version=-1,  # Explicitly set as Latest
     )
     db.add(message)
     await db.flush()
@@ -69,23 +60,17 @@ async def get_message_by_id(
     db: AsyncSession,
     user_id: str,
     message_id: str,
+    version: int | None = None,
 ) -> Message:
     """
-    Get a message by ID, enforcing user ownership.
-    
-    Args:
-        db: Database session
-        user_id: Authenticated user's ID
-        message_id: Message ID to retrieve
-        
-    Returns:
-        Message if found and owned by user
-        
-    Raises:
-        HTTPException: 404 if not found or not owned by user
+    Get a message by ID.
+    Defaults to version -1 (Latest) if version is not specified.
     """
+    target_version = version if version is not None else -1
+    
     stmt = select(Message).where(
         Message.id == message_id,
+        Message.version == target_version,
         Message.user_id == user_id,
         Message.deleted_at.is_(None),
     )
@@ -111,24 +96,15 @@ async def list_messages(
     persona_id: str | None = None,
 ) -> tuple[list[Message], int]:
     """
-    List all messages for a user with pagination and optional filters.
-    
-    Args:
-        db: Database session
-        user_id: Authenticated user's ID
-        page: Page number (1-indexed)
-        page_size: Number of items per page
-        message_type: Optional filter by message type
-        starred: Optional filter by starred status
-        persona_id: Optional filter by persona ID
-        
-    Returns:
-        Tuple of (messages list, total count)
+    List all messages for a user.
+    Only returns Latest versions (version = -1).
     """
+    persona_id = persona_id or user_id
     # Base conditions
     conditions = [
         Message.user_id == user_id,
         Message.deleted_at.is_(None),
+        Message.version == -1,  # Only show latest
     ]
     
     # Apply optional filters
@@ -168,24 +144,40 @@ async def update_message(
     data: MessageUpdate,
 ) -> Message:
     """
-    Update a message, enforcing user ownership.
-    Increments version on every update.
-    
-    Args:
-        db: Database session
-        user_id: Authenticated user's ID
-        message_id: Message ID to update
-        data: Update data (partial)
-        
-    Returns:
-        Updated message
-        
-    Raises:
-        HTTPException: 404 if not found or not owned by user
-        HTTPException: 400 if persona_id is invalid
+    Update a message.
+    1. Archives current state as a history row (version > 0).
+    2. Updates the Latest row (version = -1) with new data.
     """
-    message = await get_message_by_id(db, user_id, message_id)
+    # 1. Fetch current latest message
+    message = await get_message_by_id(db, user_id, message_id, version=-1)
     
+    # 2. Determine next history version
+    stmt = select(func.max(Message.version)).where(
+        Message.id == message_id,
+        Message.version > 0,
+    )
+    result = await db.execute(stmt)
+    max_ver = result.scalar_one_or_none() or 0
+    next_ver = max_ver + 1
+    
+    # 3. Archive current state as history
+    history_msg = Message(
+        id=message.id,
+        version=next_ver,
+        user_id=message.user_id,
+        persona_id=message.persona_id,
+        message_type=message.message_type,
+        title=message.title,
+        content=message.content,
+        summary=message.summary,
+        starred=message.starred,
+        # Preserve original timestamps for history
+        created_at=message.created_at,
+        updated_at=message.updated_at,
+    )
+    db.add(history_msg)
+    
+    # 4. Update latest message
     update_data = data.model_dump(exclude_unset=True)
     
     # Validate persona_id if being updated
@@ -204,13 +196,11 @@ async def update_message(
                 detail="Invalid persona_id: persona not found or not owned by user",
             )
     
-    # Update fields
     for field, value in update_data.items():
         setattr(message, field, value)
     
-    # Always increment version on update
-    message.version += 1
     message.updated_at = utc_now()
+    # version remains -1
     
     await db.flush()
     await db.refresh(message)
@@ -223,19 +213,85 @@ async def delete_message(
     message_id: str,
 ) -> None:
     """
-    Soft delete a message, enforcing user ownership.
-    
-    Args:
-        db: Database session
-        user_id: Authenticated user's ID
-        message_id: Message ID to delete
-        
-    Raises:
-        HTTPException: 404 if not found or not owned by user
+    Soft delete a message.
+    Marks ALL versions (Latest and History) as deleted.
     """
-    message = await get_message_by_id(db, user_id, message_id)
-    
-    message.deleted_at = utc_now()
-    message.version += 1
+    # Verify ownership (at least one version exists)
+    stmt = select(Message).where(
+        Message.id == message_id,
+        Message.user_id == user_id,
+        Message.deleted_at.is_(None)
+    ).limit(1)
+    result = await db.execute(stmt)
+    if not result.scalar_one_or_none():
+         raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found",
+        )
+
+    # Soft delete all versions
+    await db.execute(
+        update(Message)
+        .where(
+            Message.id == message_id,
+            Message.user_id == user_id
+        )
+        .values(deleted_at=utc_now())
+    )
     
     await db.flush()
+
+
+async def get_message_history(
+    db: AsyncSession,
+    user_id: str,
+    message_id: str,
+    page: int = 1,
+    page_size: int = 5,
+) -> tuple[list[Message], int]:
+    """
+    Get version history for a message.
+    Returns versions >= 0, paginated.
+    """
+    # Verify the message exists and belongs to the user (check any version)
+    # We check version -1 (latest) to ensure the message isn't fully hard-deleted 
+    # (though we use soft deletes) and to confirm ownership.
+    latest_stmt = select(Message).where(
+        Message.id == message_id,
+        Message.version == -1,
+        Message.user_id == user_id,
+        Message.deleted_at.is_(None),
+    )
+    result = await db.execute(latest_stmt)
+    if not result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Message not found",
+        )
+
+    # Base conditions for history: correct ID, user, version >= 0, not deleted
+    conditions = [
+        Message.id == message_id,
+        Message.user_id == user_id,
+        Message.version >= 0,
+        Message.deleted_at.is_(None),
+    ]
+
+    # Count total history versions
+    count_stmt = select(func.count()).select_from(Message).where(*conditions)
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar_one()
+
+    # Get paginated items, ordered by version descending (newest history first)
+    offset = (page - 1) * page_size
+    stmt = (
+        select(Message)
+        .where(*conditions)
+        .order_by(Message.version.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    result = await db.execute(stmt)
+    messages = list(result.scalars().all())
+
+    return messages, total

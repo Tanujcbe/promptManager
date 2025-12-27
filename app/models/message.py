@@ -3,15 +3,14 @@ Message model - saved prompts and responses.
 """
 import enum
 
-from sqlalchemy import Boolean, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import (
     Base,
     SoftDeleteMixin,
     TimestampMixin,
-    ULIDMixin,
-    VersionMixin,
+    generate_ulid,
 )
 
 
@@ -21,16 +20,29 @@ class MessageType(str, enum.Enum):
     RESPONSE = "response"
 
 
-class Message(Base, ULIDMixin, TimestampMixin, SoftDeleteMixin, VersionMixin):
+class Message(Base, TimestampMixin, SoftDeleteMixin):
     """
     Message model representing a saved prompt or AI response.
     
-    Messages are independent records - no conversations, no threads,
-    no ordering dependencies. A message exists only when explicitly
-    saved by the user.
+    Uses Composite Primary Key (id, version).
+    - id: ULID, shared across versions of the same message.
+    - version: -1 for Latest, >0 for History.
     """
     
     __tablename__ = "message"
+    
+    # Composite Primary Key
+    id: Mapped[str] = mapped_column(
+        String(26),
+        primary_key=True,
+        default=generate_ulid,
+    )
+    version: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        default=-1,  # Default to Latest
+        nullable=False,
+    )
     
     # Foreign key to user (required)
     user_id: Mapped[str] = mapped_column(
@@ -71,7 +83,7 @@ class Message(Base, ULIDMixin, TimestampMixin, SoftDeleteMixin, VersionMixin):
     )
     
     def __repr__(self) -> str:
-        return f"Message(id={self.id}, title={self.title}, type={self.message_type})"
+        return f"Message(id={self.id}, ver={self.version}, title={self.title})"
 
 
 # Import at bottom to avoid circular imports

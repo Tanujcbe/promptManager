@@ -73,14 +73,51 @@ async def get_message(
     message_id: str,
     current_user: CurrentUser,
     db: DBSession,
+    version: int | None = Query(None, description="Specific version to fetch (default: -1/Latest)"),
 ) -> MessageResponse:
     """
     Get a single message by ID.
     
     Returns 404 if the message doesn't exist or belongs to another user.
     """
-    message = await message_service.get_message_by_id(db, current_user.user_id, message_id)
+    message = await message_service.get_message_by_id(
+        db, 
+        current_user.user_id, 
+        message_id,
+        version=version
+    )
     return MessageResponse.model_validate(message)
+
+
+@router.get("/message/{message_id}/history", response_model=MessageListResponse)
+async def get_message_history(
+    message_id: str,
+    current_user: CurrentUser,
+    db: DBSession,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(5, ge=1, le=100, description="Items per page"),
+) -> MessageListResponse:
+    """
+    Get version history for a message.
+    
+    Returns a paginated list of past versions (version >= 0).
+    """
+    messages, total = await message_service.get_message_history(
+        db,
+        current_user.user_id,
+        message_id,
+        page,
+        page_size,
+    )
+    
+    return MessageListResponse(
+        items=[MessageResponse.model_validate(m) for m in messages],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_more=(page * page_size) < total,
+    )
+
 
 
 @router.put("/message/{message_id}", response_model=MessageResponse)
