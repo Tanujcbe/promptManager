@@ -36,7 +36,12 @@ async def create_message(
         persona = result.scalar_one_or_none()
         
         if persona is None:
-            new_persona_data = PersonaCreate(name="Default Persona", description="Default Persona", persona_prompt=None)
+            new_persona_data = PersonaCreate(
+                id=persona_id,
+                name="Default Persona", 
+                description="Default Persona", 
+                persona_prompt=None
+            )
             new_persona = await create_persona(db, user_id, new_persona_data)
             persona_id = new_persona.id
     

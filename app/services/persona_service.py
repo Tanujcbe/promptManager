@@ -29,6 +29,7 @@ async def create_persona(
         Created persona
     """
     persona = Persona(
+        id=data.id,
         user_id=user_id,
         name=data.name,
         description=data.description,

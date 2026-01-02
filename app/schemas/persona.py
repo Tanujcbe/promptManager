@@ -16,7 +16,8 @@ class PersonaBase(BaseModel):
 
 class PersonaCreate(PersonaBase):
     """Schema for creating a new persona."""
-    pass
+    
+    id: str | None = None
 
 
 class PersonaUpdate(BaseModel):
