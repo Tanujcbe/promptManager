@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 
@@ -23,9 +24,8 @@ def get_engine():
         _engine = create_async_engine(
             settings.database_url,
             echo=settings.debug,
-            pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
+            # Use NullPool for serverless/cloud environments
+            poolclass=NullPool,
         )
     return _engine
 
