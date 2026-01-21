@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     )
     
     # Application
-    app_name: str = "Prompt Vault API"
+    app_name: str = "PromptDa API"
     debug: bool = False
     
     # Supabase Configuration

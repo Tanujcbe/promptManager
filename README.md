@@ -1,4 +1,4 @@
-# Prompt Vault API
+# PromptDa API
 
 A minimal, production-quality FastAPI backend for saving prompts, AI responses, and managing personas.
 

@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Prompt Vault API",
-    "description": "API collection for Prompt Vault v0 backend",
+    "name": "PromptDa API",
+    "description": "API collection for PromptDa v0 backend",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

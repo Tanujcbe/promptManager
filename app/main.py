@@ -1,5 +1,5 @@
 """
-Prompt Vault API - FastAPI Application Entry Point.
+PromptDa API - FastAPI Application Entry Point.
 
 A minimal, production-quality backend for saving prompts and AI responses.
 """

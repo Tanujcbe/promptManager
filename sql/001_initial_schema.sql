@@ -1,4 +1,4 @@
--- Prompt Vault v0 Database Schema
+-- PromptDa v0 Database Schema
 -- Run this SQL in your Supabase SQL Editor
 
 -- ============================================
