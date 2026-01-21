@@ -1,0 +1,209 @@
+{
+  "info": {
+    "name": "Prompt Vault API",
+    "description": "API collection for Prompt Vault v0 backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "token",
+      "value": "YOUR_SUPABASE_JWT_TOKEN"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/auth/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{"key": "token", "value": "{{token}}"}]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Personas",
+      "item": [
+        {
+          "name": "Create Persona",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/personas",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Official\",\n  \"description\": \"Professional tone for work\",\n  \"persona_prompt\": \"You are a professional assistant. Use formal language.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Personas",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/personas?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "personas"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "page_size", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Persona",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/persona/PERSONA_ID_HERE"
+          }
+        },
+        {
+          "name": "Update Persona",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/persona/PERSONA_ID_HERE",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"persona_prompt\": \"Updated prompt content\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Persona",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/persona/PERSONA_ID_HERE"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "Create Message (Prompt)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/messages",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_type\": \"prompt\",\n  \"title\": \"Code Review Request\",\n  \"content\": \"Please review this Python code for best practices...\",\n  \"summary\": \"Asking for code review\",\n  \"starred\": false,\n  \"persona_id\": null\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Message (Response)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/messages",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message_type\": \"response\",\n  \"title\": \"AI Code Review\",\n  \"content\": \"Here are my suggestions for improving your code...\",\n  \"summary\": \"AI provided code review feedback\",\n  \"starred\": true,\n  \"persona_id\": null\n}"
+            }
+          }
+        },
+        {
+          "name": "List Messages",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/messages?page=1&page_size=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "messages"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "page_size", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Messages (Starred Only)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/messages?starred=true",
+              "host": ["{{base_url}}"],
+              "path": ["api", "messages"],
+              "query": [{"key": "starred", "value": "true"}]
+            }
+          }
+        },
+        {
+          "name": "List Messages (Prompts Only)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/messages?message_type=prompt",
+              "host": ["{{base_url}}"],
+              "path": ["api", "messages"],
+              "query": [{"key": "message_type", "value": "prompt"}]
+            }
+          }
+        },
+        {
+          "name": "Get Message",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/message/MESSAGE_ID_HERE"
+          }
+        },
+        {
+          "name": "Update Message",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/message/MESSAGE_ID_HERE",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Title\",\n  \"starred\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Message",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/message/MESSAGE_ID_HERE"
+          }
+        }
+      ]
+    }
+  ]
+}
